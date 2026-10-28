@@ -8,15 +8,16 @@
 <title>왁뿌볼 ASMR</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jua&family=Gowun+Dodum&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <style>
-/* Layout: one tabletop scene, ball centered on a soft felt surface, controls tucked below like a toy shelf */
+/* Layout: one tabletop scene, a real 3D ball resting on felt, controls tucked below like a toy shelf */
 :root{
-  --bg:#efe9f3; --table:#e3dbea; --ink:#3a3044; --muted:#7d7088; --chip:#fff; --chipLine:#d8cde2; --accent:#c45d93;
+  --bg:#efe9f3; --table:#e3dbea; --tableHi:#f3eef7; --ink:#3a3044; --muted:#7d7088; --chip:#fff; --chipLine:#d8cde2; --accent:#c45d93;
   --display:"Jua","Gowun Dodum",system-ui,sans-serif; --body:"Gowun Dodum",system-ui,sans-serif;
 }
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
-  --bg:#1f1a25; --table:#2a2332; --ink:#efe6f5; --muted:#a698b2; --chip:#2f2838; --chipLine:#453a50; --accent:#e58bbb; color-scheme:dark}}
-:root[data-theme="dark"]{--bg:#1f1a25; --table:#2a2332; --ink:#efe6f5; --muted:#a698b2; --chip:#2f2838; --chipLine:#453a50; --accent:#e58bbb; color-scheme:dark}
+  --bg:#1f1a25; --table:#2a2332; --tableHi:#3a3046; --ink:#efe6f5; --muted:#a698b2; --chip:#2f2838; --chipLine:#453a50; --accent:#e58bbb; color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#1f1a25; --table:#2a2332; --tableHi:#3a3046; --ink:#efe6f5; --muted:#a698b2; --chip:#2f2838; --chipLine:#453a50; --accent:#e58bbb; color-scheme:dark}
 html,body{height:100%}
 body{background:var(--bg);color:var(--ink);font-family:var(--body);margin:0;display:flex;flex-direction:column;
   padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:12px;box-sizing:border-box;overflow:hidden;user-select:none;-webkit-user-select:none}
@@ -24,18 +25,20 @@ header{display:flex;align-items:baseline;justify-content:space-between;gap:12px;
 h1{font-family:var(--display);font-weight:400;font-size:1.9rem;margin:0;letter-spacing:.01em;text-wrap:balance}
 h1 span{color:var(--accent)}
 .count{font-size:.9rem;color:var(--muted);font-variant-numeric:tabular-nums}
-.stage{flex:1;min-height:260px;position:relative;margin-block:8px;border-radius:20px;background:var(--table);overflow:hidden;touch-action:none}
-canvas{position:absolute;inset:0;width:100%;height:100%;cursor:grab;display:block}
+.stage{flex:1;min-height:260px;position:relative;margin-block:8px;border-radius:20px;background:radial-gradient(ellipse at 50% 35%,var(--tableHi),var(--table) 70%);overflow:hidden;touch-action:none}
+canvas{position:absolute;inset:0;width:100%;height:100%;cursor:grab;display:block;outline:none}
 canvas:active{cursor:grabbing}
-.hint{position:absolute;left:0;right:0;top:14px;text-align:center;color:var(--muted);font-size:.9rem;pointer-events:none;transition:opacity .4s}
-.done{position:absolute;left:0;right:0;top:14px;text-align:center;font-family:var(--display);font-size:1.4rem;color:var(--accent);pointer-events:none}
+.hint,.done{position:absolute;left:0;right:0;top:14px;text-align:center;pointer-events:none}
+.hint{color:var(--muted);font-size:.9rem;transition:opacity .4s}
+.done{font-family:var(--display);font-size:1.4rem;color:var(--accent)}
+.err{position:absolute;inset:0;display:grid;place-items:center;color:var(--muted);text-align:center;padding:16px}
 .controls{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;justify-content:space-between}
 .types{display:flex;gap:6px;flex-wrap:wrap}
 .types button,.reset{font-family:var(--display);font-size:1rem;border:1.5px solid var(--chipLine);background:var(--chip);color:var(--ink);border-radius:999px;padding:6px 12px;cursor:pointer;display:flex;align-items:center;gap:6px}
 .types button[aria-pressed="true"]{border-color:var(--accent);box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 25%,transparent)}
 .types i{width:12px;height:12px;border-radius:50%;display:inline-block}
 .reset{background:var(--accent);border-color:var(--accent);color:#fff}
-button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button:focus-visible,canvas:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .right{display:flex;align-items:center;gap:12px}
 label{font-size:.85rem;color:var(--muted);display:flex;align-items:center;gap:6px}
 input[type=range]{width:90px;accent-color:var(--accent)}
@@ -47,7 +50,6 @@ input[type=range]{width:90px;accent-color:var(--accent)}
 </header>
 
 <div class="stage" id="stage">
-  <canvas id="cv" aria-label="왁뿌볼. 누르거나 문질러서 왁스를 부수세요. 스페이스바로도 누를 수 있어요." tabindex="0"></canvas>
   <div class="hint" id="hint">꾹 누르고 버티면 주변 왁스가 와르르</div>
   <div class="done" id="done" hidden>완뿌! 새 볼로 또 뿌셔보세요</div>
 </div>
@@ -62,57 +64,28 @@ input[type=range]{width:90px;accent-color:var(--accent)}
 
 <script>
 const TYPES=[
-  {id:"cotton",name:"솜사탕",wax:[330,80,82],inner:"#fbf3f7",innerSpot:"#f6c9de",pitch:1.1,thick:.9},
-  {id:"mint",name:"민트초코",wax:[160,45,72],inner:"#5a3a2c",innerSpot:"#7a5240",pitch:.9,thick:1.1},
-  {id:"lemon",name:"레몬",wax:[50,90,68],inner:"#fffbe6",innerSpot:"#ffe58a",pitch:1.2,thick:.8},
-  {id:"berry",name:"블루베리 글리터",wax:[235,55,62],inner:"#e9e6ff",innerSpot:"#b9b0ff",pitch:1,thick:1,glitter:true},
-  {id:"choco",name:"두꺼운 초코",wax:[22,45,32],inner:"#f3e7d6",innerSpot:"#d9b98f",pitch:.7,thick:1.5}
+  {id:"cotton",name:"솜사탕",wax:[330,80,80],inner:"#fbf3f7",innerSpot:"#f6c9de",pitch:1.1,thick:.9},
+  {id:"mint",name:"민트초코",wax:[160,45,70],inner:"#5a3a2c",innerSpot:"#7a5240",pitch:.9,thick:1.1},
+  {id:"lemon",name:"레몬",wax:[50,90,64],inner:"#fffbe6",innerSpot:"#ffe58a",pitch:1.2,thick:.8},
+  {id:"berry",name:"블루베리 글리터",wax:[235,55,60],inner:"#e9e6ff",innerSpot:"#b9b0ff",pitch:1,thick:1,glitter:true},
+  {id:"choco",name:"두꺼운 초코",wax:[22,45,30],inner:"#f3e7d6",innerSpot:"#d9b98f",pitch:.7,thick:1.5}
 ];
 let type=TYPES[0];
-const cv=document.getElementById('cv'),c=cv.getContext('2d'),stage=document.getElementById('stage');
-const countEl=document.getElementById('count'),hint=document.getElementById('hint'),doneEl=document.getElementById('done');
-let W=0,H=0,R=100,cx=0,cy=0,floorY=0,dpr=1;
-function resize(){dpr=Math.min(2,window.devicePixelRatio||1);W=stage.clientWidth;H=stage.clientHeight;cv.width=W*dpr;cv.height=H*dpr;
-  R=Math.min(W*.36,H*.33);cx=W/2;cy=H*.47;floorY=cy+R*1.02;}
-new ResizeObserver(resize).observe(stage);resize();
-
-/* ---------- ball ---------- */
-let chips=[],spots=[],parts=[],squash=0,squashT=0;
+const stage=document.getElementById('stage'),countEl=document.getElementById('count'),hint=document.getElementById('hint'),doneEl=document.getElementById('done');
 function rnd(a,b){return a+Math.random()*(b-a)}
-function build(){
-  chips=[];parts=[];const N=13,cell=2/N,v=[];
-  for(let i=0;i<=N;i++){v[i]=[];for(let j=0;j<=N;j++){const edge=i==0||j==0||i==N||j==N;
-    v[i][j]=[-1+i*cell+(edge?0:rnd(-.38,.38)*cell),-1+j*cell+(edge?0:rnd(-.38,.38)*cell)]}}
-  for(let i=0;i<N;i++)for(let j=0;j<N;j++){
-    const p=[v[i][j],v[i+1][j],v[i+1][j+1],v[i][j+1]];
-    const mx=(p[0][0]+p[1][0]+p[2][0]+p[3][0])/4,my=(p[0][1]+p[1][1]+p[2][1]+p[3][1])/4;
-    if(Math.hypot(mx,my)>1.06)continue;
-    const a=Math.floor(rnd(0,4)),b=(a+2)%4,t1=rnd(.3,.7),t2=rnd(.3,.7);
-    const m1=[p[a][0]+(p[(a+1)%4][0]-p[a][0])*t1,p[a][1]+(p[(a+1)%4][1]-p[a][1])*t1];
-    const m2=[p[b][0]+(p[(b+1)%4][0]-p[b][0])*t2,p[b][1]+(p[(b+1)%4][1]-p[b][1])*t2];
-    const gl=[];if(type.glitter)for(let k=0;k<3;k++)gl.push([rnd(-.3,.3)*cell+mx,rnd(-.3,.3)*cell+my,rnd(.3,1)]);
-    chips.push({p,mx,my,s:0,l:rnd(-4,4),ox:0,oy:0,crack:[m1,m2],gl});
-  }
-  spots=[];for(let k=0;k<9;k++){const a=rnd(0,6.28),d=rnd(0,.75);spots.push([Math.cos(a)*d,Math.sin(a)*d,rnd(.12,.3)])}
-  doneEl.hidden=true;updateCount();
-}
-function updateCount(){const f=chips.filter(ch=>ch.s==2).length;countEl.textContent=`뿌신 조각 ${f} / ${chips.length}`;
-  if(f==chips.length&&chips.length)doneEl.hidden=false;}
-function waxCol(ch,dl=0){const[h,s,l]=type.wax;return`hsl(${h} ${s}% ${l+ch.l+dl}%)`}
 
-/* ---------- audio ---------- */
+/* ---------- audio (synthesized) ---------- */
 let ac=null,master,noise,volume=.8;
 function initAudio(){if(ac){if(ac.state==='suspended')ac.resume();return}
   ac=new (window.AudioContext||window.webkitAudioContext)();
   const comp=ac.createDynamicsCompressor();comp.threshold.value=-14;comp.ratio.value=4;
   master=ac.createGain();master.gain.value=volume;master.connect(comp).connect(ac.destination);
   noise=ac.createBuffer(1,ac.sampleRate*2,ac.sampleRate);const d=noise.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1;}
-function grain(t,type_,f,q,dur,g){
-  const s=ac.createBufferSource();s.buffer=noise;const fl=ac.createBiquadFilter();fl.type=type_;fl.frequency.value=f;fl.Q.value=q;
+function grain(t,ft,f,q,dur,g){
+  const s=ac.createBufferSource();s.buffer=noise;const fl=ac.createBiquadFilter();fl.type=ft;fl.frequency.value=f;fl.Q.value=q;
   const e=ac.createGain();e.gain.setValueAtTime(0,t);e.gain.linearRampToValueAtTime(g,t+.0015);e.gain.exponentialRampToValueAtTime(.0001,t+dur);
   s.connect(fl).connect(e).connect(master);s.start(t,Math.random()*1.8);s.stop(t+dur+.03);}
 function crunch(n){if(!ac)return;const t0=ac.currentTime+.005,P=type.pitch,T=type.thick;
-  // first snap: the shell giving way
   grain(t0,'bandpass',2600*P,1.2,.03,1.1);
   grain(t0,'lowpass',380*P,.8,.07*T,.7*T);
   const k=Math.min(46,6+n*4),spread=.05+Math.min(.28,n*.025)*T;
@@ -120,83 +93,165 @@ function crunch(n){if(!ac)return;const t0=ac.currentTime+.005,P=type.pitch,T=typ
     grain(t,'bandpass',rnd(1500,7000)*P,rnd(.8,4),rnd(.004,.022),rnd(.25,.9));
     if(Math.random()<.25)grain(t,'bandpass',rnd(500,1200)*P,1.5,rnd(.015,.04)*T,rnd(.2,.5));}}
 function crackle(){if(!ac)return;const t0=ac.currentTime;for(let i=0;i<5;i++)grain(t0+rnd(0,.05),'bandpass',rnd(2500,8000)*type.pitch,rnd(1,4),rnd(.003,.012),rnd(.15,.45));}
-function squish(str=1){if(!ac)return;const t=ac.currentTime+.005,dur=rnd(.28,.42);
-  const s=ac.createBufferSource();s.buffer=noise;const lp=ac.createBiquadFilter();lp.type='lowpass';lp.Q.value=6;
-  lp.frequency.setValueAtTime(260,t);lp.frequency.linearRampToValueAtTime(rnd(700,1100),t+dur*.35);lp.frequency.exponentialRampToValueAtTime(180,t+dur);
-  const e=ac.createGain();e.gain.setValueAtTime(0,t);e.gain.linearRampToValueAtTime(.55*str,t+.03);e.gain.exponentialRampToValueAtTime(.0001,t+dur);
-  s.connect(lp).connect(e).connect(master);s.start(t,Math.random());s.stop(t+dur+.05);
-  // wet pop bubbles
-  for(let i=0;i<3;i++){const tt=t+rnd(.02,dur*.8),o=ac.createOscillator(),g=ac.createGain();o.type='sine';
-    const f=rnd(160,320);o.frequency.setValueAtTime(f,tt);o.frequency.exponentialRampToValueAtTime(f*rnd(1.6,2.4),tt+.04);
-    g.gain.setValueAtTime(0,tt);g.gain.linearRampToValueAtTime(.12*str,tt+.004);g.gain.exponentialRampToValueAtTime(.0001,tt+.05);
-    o.connect(g).connect(master);o.start(tt);o.stop(tt+.06);}}
-function tick(g=.4){if(!ac)return;const t=ac.currentTime;grain(t,'bandpass',rnd(3000,7500),rnd(2,5),rnd(.003,.009),g);}
+function tick(g=.4){if(!ac)return;grain(ac.currentTime,'bandpass',rnd(3000,7500),rnd(2,5),rnd(.003,.009),g);}
 
-/* ---------- interaction ---------- */
-/* hold to build pressure: cracks spread while held, and past the limit every cracked chip nearby drops together */
-let down=false,hx=0,hy=0,pressure=0,lastT=performance.now(),crackAcc=0;
-function local(px,py){return[(px-cx)/R,(py-cy)/R]}
-function crackAt(x,y,rad){let nc=0;
-  for(const ch of chips){if(ch.s!=0)continue;const d=Math.hypot(ch.mx-x,ch.my-y);
-    if(d<rad*(.8+Math.random()*.4)){ch.s=1;nc++;const a=Math.atan2(ch.my-y,ch.mx-x);ch.ox=Math.cos(a)*.008;ch.oy=Math.sin(a)*.008}}
-  return nc}
-function collapse(x,y){let nf=0;
-  for(const ch of chips){if(ch.s!=1)continue;const d=Math.hypot(ch.mx-x,ch.my-y);
-    if(d<.5*(.85+Math.random()*.3)){ch.s=2;nf++;spawn(ch,x,y,d)}}
+if(!window.THREE){stage.insertAdjacentHTML('beforeend','<div class="err">3D 라이브러리를 불러오지 못했어요. 새로고침해 주세요.</div>')}
+else{
+
+/* ---------- scene ---------- */
+const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});
+renderer.setPixelRatio(Math.min(2,window.devicePixelRatio||1));
+renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+renderer.outputEncoding=THREE.sRGBEncoding;
+const cv=renderer.domElement;cv.tabIndex=0;cv.setAttribute('aria-label','왁뿌볼. 누른 채로 버티면 왁스가 부서져요. 스페이스바를 누르고 있어도 돼요.');
+stage.prepend(cv);
+const scene=new THREE.Scene(),camera=new THREE.PerspectiveCamera(32,1,.1,50);
+scene.add(new THREE.HemisphereLight(0xffffff,0xb8a6c4,.75));
+const key=new THREE.DirectionalLight(0xffffff,.95);key.position.set(2.2,4,3);key.castShadow=true;
+key.shadow.mapSize.set(1024,1024);Object.assign(key.shadow.camera,{left:-3,right:3,top:3,bottom:-3,near:.5,far:12});key.shadow.radius=4;scene.add(key);
+const rim=new THREE.DirectionalLight(0xffe6f2,.35);rim.position.set(-3,1.5,-2);scene.add(rim);
+const FLOOR=-1.0;
+const floor=new THREE.Mesh(new THREE.PlaneGeometry(20,20),new THREE.ShadowMaterial({opacity:.22}));
+floor.rotation.x=-Math.PI/2;floor.position.y=FLOOR;floor.receiveShadow=true;scene.add(floor);
+const ball=new THREE.Group();scene.add(ball);
+
+function resize(){const w=stage.clientWidth,h=stage.clientHeight;renderer.setSize(w,h,false);camera.aspect=w/h;
+  const z=w/h<.8?7.4:5.4;camera.position.set(0,1.1,z);camera.lookAt(0,-.15,0);camera.updateProjectionMatrix();}
+new ResizeObserver(resize).observe(stage);resize();
+
+/* ---------- textures ---------- */
+function spotTex(){const c=document.createElement('canvas');c.width=512;c.height=256;const g=c.getContext('2d');
+  g.fillStyle=type.inner;g.fillRect(0,0,512,256);
+  for(let i=0;i<26;i++){const x=rnd(0,512),y=rnd(30,226),r=rnd(18,60),gr=g.createRadialGradient(x,y,0,x,y,r);
+    gr.addColorStop(0,type.innerSpot);gr.addColorStop(1,'rgba(0,0,0,0)');g.fillStyle=gr;g.fillRect(x-r,y-r,2*r,2*r)}
+  const t=new THREE.CanvasTexture(c);t.encoding=THREE.sRGBEncoding;return t}
+function glitterTex(){const c=document.createElement('canvas');c.width=1024;c.height=512;const g=c.getContext('2d');
+  g.fillStyle='#000';g.fillRect(0,0,1024,512);for(let i=0;i<2600;i++){g.fillStyle=`rgba(255,255,255,${rnd(.4,1)})`;g.fillRect(rnd(0,1024),rnd(0,512),rnd(1,2.5),rnd(1,2.5))}
+  return new THREE.CanvasTexture(c)}
+
+/* ---------- ball construction ---------- */
+const INNER_R=.962,SEEDS=150;
+let inner=null,innerOrig=null,chips=[],falling=[],glitter=null;
+let dent=0,dentV=0,dirty=true,down=false,pressure=0,crackAcc=0;
+function freeMesh(m){m.geometry.dispose();m.material.dispose()}
+function build(){
+  for(const ch of chips){ball.remove(ch.mesh);scene.remove(ch.mesh);freeMesh(ch.mesh)}
+  for(const f of falling){scene.remove(f.mesh);freeMesh(f.mesh)}
+  if(inner){ball.remove(inner);inner.material.map.dispose();freeMesh(inner)}
+  chips=[];falling=[];dent=0;dentV=0;pressure=0;down=false;
+  if(glitter){glitter.dispose();glitter=null}if(type.glitter)glitter=glitterTex();
+
+  const ig=new THREE.SphereGeometry(INNER_R,128,96);
+  inner=new THREE.Mesh(ig,new THREE.MeshStandardMaterial({map:spotTex(),roughness:.85,metalness:0}));
+  inner.castShadow=true;ball.add(inner);innerOrig=ig.attributes.position.array.slice();
+
+  // seeds spread evenly (fibonacci) then jittered so the chip outlines look hand-broken
+  const seeds=[];const ga=Math.PI*(3-Math.sqrt(5));
+  for(let i=0;i<SEEDS;i++){const y=1-2*(i+.5)/SEEDS,r=Math.sqrt(1-y*y),th=ga*i;
+    seeds.push(new THREE.Vector3(Math.cos(th)*r+rnd(-.08,.08),y+rnd(-.08,.08),Math.sin(th)*r+rnd(-.08,.08)).normalize())}
+  const sg=new THREE.SphereGeometry(1,112,80).toNonIndexed();
+  const P=sg.attributes.position.array,N=sg.attributes.normal.array,U=sg.attributes.uv.array,triN=P.length/9;
+  const buckets=seeds.map(()=>({p:[],n:[],u:[]}));const v=new THREE.Vector3();
+  for(let t=0;t<triN;t++){const o=t*9;v.set((P[o]+P[o+3]+P[o+6])/3,(P[o+1]+P[o+4]+P[o+7])/3,(P[o+2]+P[o+5]+P[o+8])/3);
+    if(v.lengthSq()<1e-6)continue;v.normalize();
+    const w=.035*Math.sin(v.x*23+v.y*17)*Math.cos(v.z*19-v.x*11);
+    let best=0,bd=-9;for(let s=0;s<SEEDS;s++){const d=seeds[s].dot(v)+(s%3-1)*w;if(d>bd){bd=d;best=s}}
+    const b=buckets[best];for(let k=0;k<9;k++){b.p.push(P[o+k]);b.n.push(N[o+k])}for(let k=0;k<6;k++)b.u.push(U[t*6+k])}
+  sg.dispose();
+  const [h,s,l]=type.wax;
+  buckets.forEach(b=>{if(!b.p.length)return;
+    const g=new THREE.BufferGeometry();
+    g.setAttribute('position',new THREE.Float32BufferAttribute(b.p,3));g.setAttribute('normal',new THREE.Float32BufferAttribute(b.n,3));g.setAttribute('uv',new THREE.Float32BufferAttribute(b.u,2));
+    const lv=l+rnd(-3.5,3.5),col=new THREE.Color().setHSL(h/360,s/100,lv/100);
+    const m=new THREE.MeshPhysicalMaterial({color:col,roughness:.42,clearcoat:.55,clearcoatRoughness:.35,side:THREE.DoubleSide});
+    if(glitter){m.emissiveMap=glitter;m.emissive=new THREE.Color(0xffffff);m.emissiveIntensity=.55;m.roughness=.3}
+    const mesh=new THREE.Mesh(g,m);mesh.castShadow=true;ball.add(mesh);
+    const c=new THREE.Vector3();for(let k=0;k<b.p.length;k+=3)c.add(v.set(b.p[k],b.p[k+1],b.p[k+2]));c.divideScalar(b.p.length/3);
+    chips.push({mesh,s:0,dir:c.clone().normalize(),cen:c,base:Float32Array.from(b.p),orig:Float32Array.from(b.p),nrm:Float32Array.from(b.n),hsl:[h,s,lv]});
+  });
+  ball.rotation.set(0,0,0);dirty=true;updateCount();
+}
+function updateCount(){const f=chips.filter(c=>c.s==2).length;countEl.textContent=`뿌신 조각 ${f} / ${chips.length}`;
+  doneEl.hidden=!(f==chips.length&&chips.length)}
+
+/* ---------- dent: radial pushdown around the press point, with a slight bulge everywhere else ---------- */
+const pdir=new THREE.Vector3(0,0,1);const SIG=.42;
+function deformArray(src,dst,nrm,count){
+  const px=pdir.x,py=pdir.y,pz=pdir.z,d=dent;
+  for(let i=0;i<count;i+=3){const x=src[i],y=src[i+1],z=src[i+2],r=Math.hypot(x,y,z)||1,vx=x/r,vy=y/r,vz=z/r;
+    let cs=vx*px+vy*py+vz*pz;cs=cs>1?1:cs<-1?-1:cs;const a=Math.acos(cs),sm=Math.exp(-(a*a)/(SIG*SIG));
+    const g=1-d*1.12*sm+.12*d;dst[i]=x*g;dst[i+1]=y*g;dst[i+2]=z*g;
+    const sa=Math.sin(a);let nx=vx,ny=vy,nz=vz;
+    if(sa>1e-4&&Math.abs(d)>1e-4){const k=(2.24*d*sm*a/(SIG*SIG))/g;const tx=(vx*cs-px)/sa,ty=(vy*cs-py)/sa,tz=(vz*cs-pz)/sa;
+      nx=vx-k*tx;ny=vy-k*ty;nz=vz-k*tz;const nl=Math.hypot(nx,ny,nz);nx/=nl;ny/=nl;nz/=nl}
+    nrm[i]=nx;nrm[i+1]=ny;nrm[i+2]=nz}}
+function applyDeform(){
+  const ip=inner.geometry.attributes.position,inn=inner.geometry.attributes.normal;
+  deformArray(innerOrig,ip.array,inn.array,innerOrig.length);ip.needsUpdate=true;inn.needsUpdate=true;
+  for(const ch of chips){if(ch.s==2)continue;const pa=ch.mesh.geometry.attributes.position,na=ch.mesh.geometry.attributes.normal;
+    deformArray(ch.base,pa.array,na.array,ch.base.length);pa.needsUpdate=true;na.needsUpdate=true}}
+
+/* ---------- breaking ---------- */
+function crackAt(dir,rad){let nc=0;
+  for(const ch of chips){if(ch.s!=0)continue;const d=ch.dir.distanceTo(dir);
+    if(d<rad*(.8+Math.random()*.4)){ch.s=1;nc++;
+      // shrink the chip toward its middle and lift it a hair, so gaps open onto the clay underneath
+      const b=ch.base,o=ch.orig,c=ch.cen;for(let i=0;i<b.length;i+=3){b[i]=(c.x+(o[i]-c.x)*.93)*1.006;b[i+1]=(c.y+(o[i+1]-c.y)*.93)*1.006;b[i+2]=(c.z+(o[i+2]-c.z)*.93)*1.006}
+      ch.mesh.material.color.setHSL(ch.hsl[0]/360,ch.hsl[1]/100,(ch.hsl[2]-5)/100)}}
+  if(nc)dirty=true;return nc}
+function collapse(dir){let nf=0;
+  for(const ch of chips){if(ch.s!=1)continue;const d=ch.dir.distanceTo(dir);
+    if(d<.55*(.85+Math.random()*.3)){ch.s=2;nf++;drop(ch,d)}}
   if(nf){crunch(Math.max(4,nf*.6));crackle();setTimeout(crackle,60);updateCount()}
-  crackAt(x,y,.6);}
-function startPress(px,py){const[x,y]=local(px,py);if(Math.hypot(x,y)>1.12)return;
-  down=true;hx=px;hy=py;pressure=0;crackAcc=0;const nc=crackAt(x,y,.2);if(nc)crunch(nc);hint.style.opacity=0;}
-function holdTick(dt){if(!down){squashT=0;return}
-  pressure=Math.min(1,pressure+dt/.7);squashT=.35+.65*pressure;
-  const[x,y]=local(hx,hy);crackAcc+=dt;
-  if(crackAcc>.09){crackAcc=0;const nc=crackAt(x,y,.2+.22*pressure);if(nc)crunch(nc);}
-  if(pressure>=1){collapse(x,y);pressure=0;}}
-function spawn(ch,x,y,d){if(parts.length>260)parts.shift();
-  const a=Math.atan2(ch.my-y,ch.mx-x)+rnd(-.5,.5),sp=rnd(1,3.5)*(1-d*.6);
-  parts.push({ch,x:cx+ch.mx*R,y:cy+ch.my*R,vx:Math.cos(a)*sp+ch.mx*2,vy:Math.sin(a)*sp-rnd(.5,2.5),r:0,vr:rnd(-.2,.2),life:1,bounced:0,col:waxCol(ch)})}
-cv.addEventListener('pointerdown',e=>{initAudio();cv.setPointerCapture(e.pointerId);const p=pt(e);startPress(p[0],p[1])});
-cv.addEventListener('pointermove',e=>{if(!down)return;const p=pt(e);hx=p[0];hy=p[1]});
+  crackAt(dir,.65);}
+function drop(ch,d){
+  const g=ch.mesh.geometry,pa=g.attributes.position;pa.array.set(ch.base);pa.needsUpdate=true;
+  g.attributes.normal.array.set(ch.nrm);g.attributes.normal.needsUpdate=true;
+  g.translate(-ch.cen.x,-ch.cen.y,-ch.cen.z);
+  // turn the chip so its outer face points up; it can then land convex side up
+  const q=new THREE.Quaternion().setFromUnitVectors(ch.dir,new THREE.Vector3(0,1,0));g.applyQuaternion(q);
+  ch.mesh.quaternion.copy(q).invert();ch.mesh.position.copy(ch.cen);
+  scene.attach(ch.mesh);
+  const vel=ch.mesh.position.clone().sub(ball.position).normalize().multiplyScalar(rnd(.6,1.6)*(1-d*.5)).add(new THREE.Vector3(rnd(-.3,.3),rnd(.4,1.3),rnd(-.3,.3)));
+  ch.mesh.material.transparent=true;
+  falling.push({mesh:ch.mesh,vel,spin:new THREE.Vector3(rnd(-6,6),rnd(-6,6),rnd(-6,6)),bounced:0,rest:0,life:1});
+  if(falling.length>220){const f=falling.shift();scene.remove(f.mesh);freeMesh(f.mesh)}}
+
+/* ---------- input: hold to build pressure ---------- */
+const ray=new THREE.Raycaster(),ndc=new THREE.Vector2(),inv=new THREE.Matrix4(),tmpQ=new THREE.Quaternion(),unit=new THREE.Sphere(new THREE.Vector3(),1);
+function pickDir(e){const b=cv.getBoundingClientRect();ndc.set((e.clientX-b.left)/b.width*2-1,-(e.clientY-b.top)/b.height*2+1);
+  ray.setFromCamera(ndc,camera);ball.updateMatrixWorld();inv.copy(ball.matrixWorld).invert();
+  const r=ray.ray.clone().applyMatrix4(inv),hit=new THREE.Vector3();
+  return r.intersectSphere(unit,hit)?hit.normalize():null}
+function startPress(dir){down=true;pdir.copy(dir);pressure=0;crackAcc=0;dentV+=.9;const nc=crackAt(pdir,.2);if(nc)crunch(nc);hint.style.opacity=0;}
+cv.addEventListener('pointerdown',e=>{initAudio();const d=pickDir(e);if(!d)return;cv.setPointerCapture(e.pointerId);startPress(d)});
+cv.addEventListener('pointermove',e=>{if(!down)return;const d=pickDir(e);if(d)pdir.lerp(d,.5).normalize()});
 const up=()=>{down=false};cv.addEventListener('pointerup',up);cv.addEventListener('pointercancel',up);
 cv.addEventListener('keydown',e=>{if((e.code==='Space'||e.code==='Enter')&&!e.repeat){e.preventDefault();initAudio();
-  const a=rnd(0,6.28),d=rnd(0,.8);startPress(cx+Math.cos(a)*d*R,cy+Math.sin(a)*d*R)}});
+  const w=new THREE.Vector3(rnd(-.6,.6),rnd(-.3,.6),1).normalize();ball.updateMatrixWorld();
+  startPress(w.applyQuaternion(ball.getWorldQuaternion(tmpQ).invert()))}});
 cv.addEventListener('keyup',e=>{if(e.code==='Space'||e.code==='Enter')down=false});
-function pt(e){const b=cv.getBoundingClientRect();return[e.clientX-b.left,e.clientY-b.top]}
 
-/* ---------- render ---------- */
-function poly(pts,ox,oy,s){c.beginPath();pts.forEach((q,i)=>{const X=ox+q[0]*s,Y=oy+q[1]*s;i?c.lineTo(X,Y):c.moveTo(X,Y)});c.closePath()}
-function frame(){
-  const now=performance.now();holdTick(Math.min(.05,(now-lastT)/1000));lastT=now;
-  squash+=(squashT-squash)*.3;
-  c.setTransform(dpr,0,0,dpr,0,0);c.clearRect(0,0,W,H);
-  // floor shadow
-  const sh=c.createRadialGradient(cx,floorY,0,cx,floorY,R*1.1);sh.addColorStop(0,'rgba(40,20,50,.28)');sh.addColorStop(1,'rgba(40,20,50,0)');
-  c.save();c.translate(cx,floorY);c.scale(1+squash*.08,.16);c.translate(-cx,-floorY);c.fillStyle=sh;c.beginPath();c.arc(cx,floorY,R*1.1,0,7);c.fill();c.restore();
-  // ball with squash around its base
-  c.save();c.translate(cx,floorY);c.scale(1+squash*.07,1-squash*.09);c.translate(-cx,-floorY);
-  c.beginPath();c.arc(cx,cy,R,0,7);c.save();c.clip();
-  c.fillStyle=type.inner;c.fillRect(cx-R,cy-R,2*R,2*R);
-  for(const s of spots){const g=c.createRadialGradient(cx+s[0]*R,cy+s[1]*R,0,cx+s[0]*R,cy+s[1]*R,s[2]*R);g.addColorStop(0,type.innerSpot);g.addColorStop(1,'transparent');c.fillStyle=g;c.fillRect(cx-R,cy-R,2*R,2*R)}
-  // shell chips: underside edge first so exposed rims read as thickness
-  for(const ch of chips){if(ch.s==2)continue;poly(ch.p,cx+ch.ox*R,cy+ch.oy*R+1.5,R);c.fillStyle=waxCol(ch,-14);c.fill()}
-  for(const ch of chips){if(ch.s==2)continue;const ox=cx+ch.ox*R,oy=cy+ch.oy*R;poly(ch.p,ox,oy,R);c.fillStyle=waxCol(ch);c.fill();
-    if(ch.gl.length){for(const g of ch.gl){c.fillStyle=`rgba(255,255,255,${.5+.5*Math.sin(performance.now()/300*g[2]+g[0]*20)})`;c.fillRect(ox+g[0]*R,oy+g[1]*R,1.6,1.6)}}
-    if(ch.s==1){c.strokeStyle='rgba(30,10,30,.35)';c.lineWidth=1.1;c.stroke();
-      c.beginPath();c.moveTo(ox+ch.crack[0][0]*R,oy+ch.crack[0][1]*R);c.lineTo(ox+ch.crack[1][0]*R,oy+ch.crack[1][1]*R);c.stroke();
-      c.strokeStyle='rgba(255,255,255,.35)';c.lineWidth=.7;poly(ch.p,ox+.8,oy+.8,R);c.stroke()}}
-  // lighting
-  let g=c.createRadialGradient(cx-R*.38,cy-R*.42,0,cx-R*.38,cy-R*.42,R*.75);g.addColorStop(0,'rgba(255,255,255,.55)');g.addColorStop(1,'rgba(255,255,255,0)');c.fillStyle=g;c.fillRect(cx-R,cy-R,2*R,2*R);
-  g=c.createRadialGradient(cx,cy,R*.55,cx,cy,R);g.addColorStop(0,'rgba(20,0,30,0)');g.addColorStop(1,'rgba(20,0,30,.3)');c.fillStyle=g;c.fillRect(cx-R,cy-R,2*R,2*R);
-  c.restore();c.restore();
-  if(down&&pressure>.05){c.strokeStyle=`rgba(255,255,255,${.25+.45*pressure})`;c.lineWidth=2;c.beginPath();c.arc(hx,hy,R*(.5-.38*pressure),0,7);c.stroke()}
-  // falling chips
-  for(let i=parts.length-1;i>=0;i--){const p=parts[i];p.vy+=.35;p.x+=p.vx;p.y+=p.vy;p.r+=p.vr;
-    if(p.y>floorY+rnd(-4,10)&&p.vy>0){p.y=floorY+4;if(p.bounced<2&&p.vy>1.2){if(p.bounced==0)tick(Math.min(.5,p.vy*.08));p.vy*=-.3;p.vx*=.6;p.vr*=.5;p.bounced++}else{p.vy=0;p.vx*=.8;p.vr=0;p.life-=.004}}
-    if(p.x<-30||p.x>W+30||p.life<=0){parts.splice(i,1);continue}
-    c.save();c.globalAlpha=Math.max(0,p.life);c.translate(p.x,p.y);c.rotate(p.r);
-    const pts=p.ch.p.map(q=>[(q[0]-p.ch.mx),(q[1]-p.ch.my)]);
-    poly(pts,0,1.5,R);c.fillStyle=waxCol(p.ch,-14);c.fill();poly(pts,0,0,R);c.fillStyle=p.col;c.fill();c.restore()}
-  requestAnimationFrame(frame)}
+/* ---------- loop ---------- */
+let last=performance.now();
+function frame(now){const dt=Math.min(.05,Math.max(0,(now-last)/1000));last=now;
+  if(down){pressure=Math.min(1,pressure+dt/.7);crackAcc+=dt;
+    if(crackAcc>.09){crackAcc=0;const nc=crackAt(pdir,.2+.22*pressure);if(nc)crunch(nc)}
+    if(pressure>=1){collapse(pdir);pressure=0;dentV+=1.4}}
+  else ball.rotation.y+=dt*.18;
+  // spring toward the held depth; on release it overshoots and bounces back out
+  const target=down?.07+.1*pressure:0;dentV+=(target-dent)*260*dt;dentV*=Math.exp(-11*dt);dent+=dentV*dt;
+  if(Math.abs(dent)>.0004||Math.abs(dentV)>.002||dirty){applyDeform();dirty=Math.abs(dent)>.0004}
+  ball.scale.set(1+dent*.12,1-dent*.1,1+dent*.12);ball.position.y=-dent*.1;
+  for(let i=falling.length-1;i>=0;i--){const f=falling[i],m=f.mesh;
+    if(!f.rest){f.vel.y-=9.8*dt;m.position.addScaledVector(f.vel,dt);
+      m.rotation.x+=f.spin.x*dt;m.rotation.y+=f.spin.y*dt;m.rotation.z+=f.spin.z*dt;
+      if(m.position.y<FLOOR+.03&&f.vel.y<0){m.position.y=FLOOR+.03;
+        if(f.bounced<2&&f.vel.y<-.8){if(!f.bounced)tick(Math.min(.5,-f.vel.y*.12));f.vel.y*=-.28;f.vel.x*=.55;f.vel.z*=.55;f.spin.multiplyScalar(.4);f.bounced++}
+        else{f.rest=1;m.rotation.set(rnd(-.15,.15),rnd(0,6.28),rnd(-.15,.15))}}}
+    else{f.life-=dt/6;if(f.life<.25)m.material.opacity=f.life/.25;
+      if(f.life<=0){scene.remove(m);freeMesh(m);falling.splice(i,1)}}}
+  renderer.render(scene,camera);requestAnimationFrame(frame)}
 
 /* ---------- ui ---------- */
 const typesEl=document.getElementById('types');
@@ -204,7 +259,8 @@ TYPES.forEach(t=>{const b=document.createElement('button');b.id='type-'+t.id;b.i
   b.setAttribute('aria-pressed',t===type);b.onclick=()=>{type=t;[...typesEl.children].forEach(x=>x.setAttribute('aria-pressed',x===b));build()};typesEl.appendChild(b)});
 document.getElementById('reset').onclick=()=>{build();hint.style.opacity=1};
 document.getElementById('vol').oninput=e=>{volume=+e.target.value;if(master)master.gain.value=volume};
-build();frame();
+build();requestAnimationFrame(frame);
+}
 </script>
 
 </body>
