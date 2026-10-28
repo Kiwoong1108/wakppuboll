@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+</head>
+<body>
+<title>왁뿌볼 ASMR</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jua&family=Gowun+Dodum&display=swap">
+<style>
+/* Layout: one tabletop scene, ball centered on a soft felt surface, controls tucked below like a toy shelf */
+:root{
+  --bg:#efe9f3; --table:#e3dbea; --ink:#3a3044; --muted:#7d7088; --chip:#fff; --chipLine:#d8cde2; --accent:#c45d93;
+  --display:"Jua","Gowun Dodum",system-ui,sans-serif; --body:"Gowun Dodum",system-ui,sans-serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#1f1a25; --table:#2a2332; --ink:#efe6f5; --muted:#a698b2; --chip:#2f2838; --chipLine:#453a50; --accent:#e58bbb; color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#1f1a25; --table:#2a2332; --ink:#efe6f5; --muted:#a698b2; --chip:#2f2838; --chipLine:#453a50; --accent:#e58bbb; color-scheme:dark}
+html,body{height:100%}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);margin:0;display:flex;flex-direction:column;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:12px;box-sizing:border-box;overflow:hidden;user-select:none;-webkit-user-select:none}
+header{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap}
+h1{font-family:var(--display);font-weight:400;font-size:1.9rem;margin:0;letter-spacing:.01em;text-wrap:balance}
+h1 span{color:var(--accent)}
+.count{font-size:.9rem;color:var(--muted);font-variant-numeric:tabular-nums}
+.stage{flex:1;min-height:260px;position:relative;margin-block:8px;border-radius:20px;background:var(--table);overflow:hidden;touch-action:none}
+canvas{position:absolute;inset:0;width:100%;height:100%;cursor:grab;display:block}
+canvas:active{cursor:grabbing}
+.hint{position:absolute;left:0;right:0;top:14px;text-align:center;color:var(--muted);font-size:.9rem;pointer-events:none;transition:opacity .4s}
+.done{position:absolute;left:0;right:0;top:14px;text-align:center;font-family:var(--display);font-size:1.4rem;color:var(--accent);pointer-events:none}
+.controls{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;justify-content:space-between}
+.types{display:flex;gap:6px;flex-wrap:wrap}
+.types button,.reset{font-family:var(--display);font-size:1rem;border:1.5px solid var(--chipLine);background:var(--chip);color:var(--ink);border-radius:999px;padding:6px 12px;cursor:pointer;display:flex;align-items:center;gap:6px}
+.types button[aria-pressed="true"]{border-color:var(--accent);box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 25%,transparent)}
+.types i{width:12px;height:12px;border-radius:50%;display:inline-block}
+.reset{background:var(--accent);border-color:var(--accent);color:#fff}
+button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.right{display:flex;align-items:center;gap:12px}
+label{font-size:.85rem;color:var(--muted);display:flex;align-items:center;gap:6px}
+input[type=range]{width:90px;accent-color:var(--accent)}
+</style>
+
+<header>
+  <h1>왁뿌볼 <span>ASMR</span></h1>
+  <div class="count" id="count">뿌신 조각 0 / 0</div>
+</header>
+
+<div class="stage" id="stage">
+  <canvas id="cv" aria-label="왁뿌볼. 누르거나 문질러서 왁스를 부수세요. 스페이스바로도 누를 수 있어요." tabindex="0"></canvas>
+  <div class="hint" id="hint">꾹 누르고 버티면 주변 왁스가 와르르</div>
+  <div class="done" id="done" hidden>완뿌! 새 볼로 또 뿌셔보세요</div>
+</div>
+
+<div class="controls">
+  <div class="types" id="types"></div>
+  <div class="right">
+    <label for="vol">볼륨 <input id="vol" type="range" min="0" max="1" step="0.01" value="0.8"></label>
+    <button class="reset" id="reset">새 볼</button>
+  </div>
+</div>
+
+<script>
+const TYPES=[
+  {id:"cotton",name:"솜사탕",wax:[330,80,82],inner:"#fbf3f7",innerSpot:"#f6c9de",pitch:1.1,thick:.9},
+  {id:"mint",name:"민트초코",wax:[160,45,72],inner:"#5a3a2c",innerSpot:"#7a5240",pitch:.9,thick:1.1},
+  {id:"lemon",name:"레몬",wax:[50,90,68],inner:"#fffbe6",innerSpot:"#ffe58a",pitch:1.2,thick:.8},
+  {id:"berry",name:"블루베리 글리터",wax:[235,55,62],inner:"#e9e6ff",innerSpot:"#b9b0ff",pitch:1,thick:1,glitter:true},
+  {id:"choco",name:"두꺼운 초코",wax:[22,45,32],inner:"#f3e7d6",innerSpot:"#d9b98f",pitch:.7,thick:1.5}
+];
+let type=TYPES[0];
+const cv=document.getElementById('cv'),c=cv.getContext('2d'),stage=document.getElementById('stage');
+const countEl=document.getElementById('count'),hint=document.getElementById('hint'),doneEl=document.getElementById('done');
+let W=0,H=0,R=100,cx=0,cy=0,floorY=0,dpr=1;
+function resize(){dpr=Math.min(2,window.devicePixelRatio||1);W=stage.clientWidth;H=stage.clientHeight;cv.width=W*dpr;cv.height=H*dpr;
+  R=Math.min(W*.36,H*.33);cx=W/2;cy=H*.47;floorY=cy+R*1.02;}
+new ResizeObserver(resize).observe(stage);resize();
+
+/* ---------- ball ---------- */
+let chips=[],spots=[],parts=[],squash=0,squashT=0;
+function rnd(a,b){return a+Math.random()*(b-a)}
+function build(){
+  chips=[];parts=[];const N=13,cell=2/N,v=[];
+  for(let i=0;i<=N;i++){v[i]=[];for(let j=0;j<=N;j++){const edge=i==0||j==0||i==N||j==N;
+    v[i][j]=[-1+i*cell+(edge?0:rnd(-.38,.38)*cell),-1+j*cell+(edge?0:rnd(-.38,.38)*cell)]}}
+  for(let i=0;i<N;i++)for(let j=0;j<N;j++){
+    const p=[v[i][j],v[i+1][j],v[i+1][j+1],v[i][j+1]];
+    const mx=(p[0][0]+p[1][0]+p[2][0]+p[3][0])/4,my=(p[0][1]+p[1][1]+p[2][1]+p[3][1])/4;
+    if(Math.hypot(mx,my)>1.06)continue;
+    const a=Math.floor(rnd(0,4)),b=(a+2)%4,t1=rnd(.3,.7),t2=rnd(.3,.7);
+    const m1=[p[a][0]+(p[(a+1)%4][0]-p[a][0])*t1,p[a][1]+(p[(a+1)%4][1]-p[a][1])*t1];
+    const m2=[p[b][0]+(p[(b+1)%4][0]-p[b][0])*t2,p[b][1]+(p[(b+1)%4][1]-p[b][1])*t2];
+    const gl=[];if(type.glitter)for(let k=0;k<3;k++)gl.push([rnd(-.3,.3)*cell+mx,rnd(-.3,.3)*cell+my,rnd(.3,1)]);
+    chips.push({p,mx,my,s:0,l:rnd(-4,4),ox:0,oy:0,crack:[m1,m2],gl});
+  }
+  spots=[];for(let k=0;k<9;k++){const a=rnd(0,6.28),d=rnd(0,.75);spots.push([Math.cos(a)*d,Math.sin(a)*d,rnd(.12,.3)])}
+  doneEl.hidden=true;updateCount();
+}
+function updateCount(){const f=chips.filter(ch=>ch.s==2).length;countEl.textContent=`뿌신 조각 ${f} / ${chips.length}`;
+  if(f==chips.length&&chips.length)doneEl.hidden=false;}
+function waxCol(ch,dl=0){const[h,s,l]=type.wax;return`hsl(${h} ${s}% ${l+ch.l+dl}%)`}
+
+/* ---------- audio ---------- */
+let ac=null,master,noise,volume=.8;
+function initAudio(){if(ac){if(ac.state==='suspended')ac.resume();return}
+  ac=new (window.AudioContext||window.webkitAudioContext)();
+  const comp=ac.createDynamicsCompressor();comp.threshold.value=-14;comp.ratio.value=4;
+  master=ac.createGain();master.gain.value=volume;master.connect(comp).connect(ac.destination);
+  noise=ac.createBuffer(1,ac.sampleRate*2,ac.sampleRate);const d=noise.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1;}
+function grain(t,type_,f,q,dur,g){
+  const s=ac.createBufferSource();s.buffer=noise;const fl=ac.createBiquadFilter();fl.type=type_;fl.frequency.value=f;fl.Q.value=q;
+  const e=ac.createGain();e.gain.setValueAtTime(0,t);e.gain.linearRampToValueAtTime(g,t+.0015);e.gain.exponentialRampToValueAtTime(.0001,t+dur);
+  s.connect(fl).connect(e).connect(master);s.start(t,Math.random()*1.8);s.stop(t+dur+.03);}
+function crunch(n){if(!ac)return;const t0=ac.currentTime+.005,P=type.pitch,T=type.thick;
+  // first snap: the shell giving way
+  grain(t0,'bandpass',2600*P,1.2,.03,1.1);
+  grain(t0,'lowpass',380*P,.8,.07*T,.7*T);
+  const k=Math.min(46,6+n*4),spread=.05+Math.min(.28,n*.025)*T;
+  for(let i=0;i<k;i++){const t=t0+Math.pow(Math.random(),1.6)*spread;
+    grain(t,'bandpass',rnd(1500,7000)*P,rnd(.8,4),rnd(.004,.022),rnd(.25,.9));
+    if(Math.random()<.25)grain(t,'bandpass',rnd(500,1200)*P,1.5,rnd(.015,.04)*T,rnd(.2,.5));}}
+function crackle(){if(!ac)return;const t0=ac.currentTime;for(let i=0;i<5;i++)grain(t0+rnd(0,.05),'bandpass',rnd(2500,8000)*type.pitch,rnd(1,4),rnd(.003,.012),rnd(.15,.45));}
+function squish(str=1){if(!ac)return;const t=ac.currentTime+.005,dur=rnd(.28,.42);
+  const s=ac.createBufferSource();s.buffer=noise;const lp=ac.createBiquadFilter();lp.type='lowpass';lp.Q.value=6;
+  lp.frequency.setValueAtTime(260,t);lp.frequency.linearRampToValueAtTime(rnd(700,1100),t+dur*.35);lp.frequency.exponentialRampToValueAtTime(180,t+dur);
+  const e=ac.createGain();e.gain.setValueAtTime(0,t);e.gain.linearRampToValueAtTime(.55*str,t+.03);e.gain.exponentialRampToValueAtTime(.0001,t+dur);
+  s.connect(lp).connect(e).connect(master);s.start(t,Math.random());s.stop(t+dur+.05);
+  // wet pop bubbles
+  for(let i=0;i<3;i++){const tt=t+rnd(.02,dur*.8),o=ac.createOscillator(),g=ac.createGain();o.type='sine';
+    const f=rnd(160,320);o.frequency.setValueAtTime(f,tt);o.frequency.exponentialRampToValueAtTime(f*rnd(1.6,2.4),tt+.04);
+    g.gain.setValueAtTime(0,tt);g.gain.linearRampToValueAtTime(.12*str,tt+.004);g.gain.exponentialRampToValueAtTime(.0001,tt+.05);
+    o.connect(g).connect(master);o.start(tt);o.stop(tt+.06);}}
+function tick(g=.4){if(!ac)return;const t=ac.currentTime;grain(t,'bandpass',rnd(3000,7500),rnd(2,5),rnd(.003,.009),g);}
+
+/* ---------- interaction ---------- */
+/* hold to build pressure: cracks spread while held, and past the limit every cracked chip nearby drops together */
+let down=false,hx=0,hy=0,pressure=0,lastT=performance.now(),crackAcc=0;
+function local(px,py){return[(px-cx)/R,(py-cy)/R]}
+function crackAt(x,y,rad){let nc=0;
+  for(const ch of chips){if(ch.s!=0)continue;const d=Math.hypot(ch.mx-x,ch.my-y);
+    if(d<rad*(.8+Math.random()*.4)){ch.s=1;nc++;const a=Math.atan2(ch.my-y,ch.mx-x);ch.ox=Math.cos(a)*.008;ch.oy=Math.sin(a)*.008}}
+  return nc}
+function collapse(x,y){let nf=0;
+  for(const ch of chips){if(ch.s!=1)continue;const d=Math.hypot(ch.mx-x,ch.my-y);
+    if(d<.5*(.85+Math.random()*.3)){ch.s=2;nf++;spawn(ch,x,y,d)}}
+  if(nf){crunch(Math.max(4,nf*.6));crackle();setTimeout(crackle,60);updateCount()}
+  crackAt(x,y,.6);}
+function startPress(px,py){const[x,y]=local(px,py);if(Math.hypot(x,y)>1.12)return;
+  down=true;hx=px;hy=py;pressure=0;crackAcc=0;const nc=crackAt(x,y,.2);if(nc)crunch(nc);hint.style.opacity=0;}
+function holdTick(dt){if(!down){squashT=0;return}
+  pressure=Math.min(1,pressure+dt/.7);squashT=.35+.65*pressure;
+  const[x,y]=local(hx,hy);crackAcc+=dt;
+  if(crackAcc>.09){crackAcc=0;const nc=crackAt(x,y,.2+.22*pressure);if(nc)crunch(nc);}
+  if(pressure>=1){collapse(x,y);pressure=0;}}
+function spawn(ch,x,y,d){if(parts.length>260)parts.shift();
+  const a=Math.atan2(ch.my-y,ch.mx-x)+rnd(-.5,.5),sp=rnd(1,3.5)*(1-d*.6);
+  parts.push({ch,x:cx+ch.mx*R,y:cy+ch.my*R,vx:Math.cos(a)*sp+ch.mx*2,vy:Math.sin(a)*sp-rnd(.5,2.5),r:0,vr:rnd(-.2,.2),life:1,bounced:0,col:waxCol(ch)})}
+cv.addEventListener('pointerdown',e=>{initAudio();cv.setPointerCapture(e.pointerId);const p=pt(e);startPress(p[0],p[1])});
+cv.addEventListener('pointermove',e=>{if(!down)return;const p=pt(e);hx=p[0];hy=p[1]});
+const up=()=>{down=false};cv.addEventListener('pointerup',up);cv.addEventListener('pointercancel',up);
+cv.addEventListener('keydown',e=>{if((e.code==='Space'||e.code==='Enter')&&!e.repeat){e.preventDefault();initAudio();
+  const a=rnd(0,6.28),d=rnd(0,.8);startPress(cx+Math.cos(a)*d*R,cy+Math.sin(a)*d*R)}});
+cv.addEventListener('keyup',e=>{if(e.code==='Space'||e.code==='Enter')down=false});
+function pt(e){const b=cv.getBoundingClientRect();return[e.clientX-b.left,e.clientY-b.top]}
+
+/* ---------- render ---------- */
+function poly(pts,ox,oy,s){c.beginPath();pts.forEach((q,i)=>{const X=ox+q[0]*s,Y=oy+q[1]*s;i?c.lineTo(X,Y):c.moveTo(X,Y)});c.closePath()}
+function frame(){
+  const now=performance.now();holdTick(Math.min(.05,(now-lastT)/1000));lastT=now;
+  squash+=(squashT-squash)*.3;
+  c.setTransform(dpr,0,0,dpr,0,0);c.clearRect(0,0,W,H);
+  // floor shadow
+  const sh=c.createRadialGradient(cx,floorY,0,cx,floorY,R*1.1);sh.addColorStop(0,'rgba(40,20,50,.28)');sh.addColorStop(1,'rgba(40,20,50,0)');
+  c.save();c.translate(cx,floorY);c.scale(1+squash*.08,.16);c.translate(-cx,-floorY);c.fillStyle=sh;c.beginPath();c.arc(cx,floorY,R*1.1,0,7);c.fill();c.restore();
+  // ball with squash around its base
+  c.save();c.translate(cx,floorY);c.scale(1+squash*.07,1-squash*.09);c.translate(-cx,-floorY);
+  c.beginPath();c.arc(cx,cy,R,0,7);c.save();c.clip();
+  c.fillStyle=type.inner;c.fillRect(cx-R,cy-R,2*R,2*R);
+  for(const s of spots){const g=c.createRadialGradient(cx+s[0]*R,cy+s[1]*R,0,cx+s[0]*R,cy+s[1]*R,s[2]*R);g.addColorStop(0,type.innerSpot);g.addColorStop(1,'transparent');c.fillStyle=g;c.fillRect(cx-R,cy-R,2*R,2*R)}
+  // shell chips: underside edge first so exposed rims read as thickness
+  for(const ch of chips){if(ch.s==2)continue;poly(ch.p,cx+ch.ox*R,cy+ch.oy*R+1.5,R);c.fillStyle=waxCol(ch,-14);c.fill()}
+  for(const ch of chips){if(ch.s==2)continue;const ox=cx+ch.ox*R,oy=cy+ch.oy*R;poly(ch.p,ox,oy,R);c.fillStyle=waxCol(ch);c.fill();
+    if(ch.gl.length){for(const g of ch.gl){c.fillStyle=`rgba(255,255,255,${.5+.5*Math.sin(performance.now()/300*g[2]+g[0]*20)})`;c.fillRect(ox+g[0]*R,oy+g[1]*R,1.6,1.6)}}
+    if(ch.s==1){c.strokeStyle='rgba(30,10,30,.35)';c.lineWidth=1.1;c.stroke();
+      c.beginPath();c.moveTo(ox+ch.crack[0][0]*R,oy+ch.crack[0][1]*R);c.lineTo(ox+ch.crack[1][0]*R,oy+ch.crack[1][1]*R);c.stroke();
+      c.strokeStyle='rgba(255,255,255,.35)';c.lineWidth=.7;poly(ch.p,ox+.8,oy+.8,R);c.stroke()}}
+  // lighting
+  let g=c.createRadialGradient(cx-R*.38,cy-R*.42,0,cx-R*.38,cy-R*.42,R*.75);g.addColorStop(0,'rgba(255,255,255,.55)');g.addColorStop(1,'rgba(255,255,255,0)');c.fillStyle=g;c.fillRect(cx-R,cy-R,2*R,2*R);
+  g=c.createRadialGradient(cx,cy,R*.55,cx,cy,R);g.addColorStop(0,'rgba(20,0,30,0)');g.addColorStop(1,'rgba(20,0,30,.3)');c.fillStyle=g;c.fillRect(cx-R,cy-R,2*R,2*R);
+  c.restore();c.restore();
+  if(down&&pressure>.05){c.strokeStyle=`rgba(255,255,255,${.25+.45*pressure})`;c.lineWidth=2;c.beginPath();c.arc(hx,hy,R*(.5-.38*pressure),0,7);c.stroke()}
+  // falling chips
+  for(let i=parts.length-1;i>=0;i--){const p=parts[i];p.vy+=.35;p.x+=p.vx;p.y+=p.vy;p.r+=p.vr;
+    if(p.y>floorY+rnd(-4,10)&&p.vy>0){p.y=floorY+4;if(p.bounced<2&&p.vy>1.2){if(p.bounced==0)tick(Math.min(.5,p.vy*.08));p.vy*=-.3;p.vx*=.6;p.vr*=.5;p.bounced++}else{p.vy=0;p.vx*=.8;p.vr=0;p.life-=.004}}
+    if(p.x<-30||p.x>W+30||p.life<=0){parts.splice(i,1);continue}
+    c.save();c.globalAlpha=Math.max(0,p.life);c.translate(p.x,p.y);c.rotate(p.r);
+    const pts=p.ch.p.map(q=>[(q[0]-p.ch.mx),(q[1]-p.ch.my)]);
+    poly(pts,0,1.5,R);c.fillStyle=waxCol(p.ch,-14);c.fill();poly(pts,0,0,R);c.fillStyle=p.col;c.fill();c.restore()}
+  requestAnimationFrame(frame)}
+
+/* ---------- ui ---------- */
+const typesEl=document.getElementById('types');
+TYPES.forEach(t=>{const b=document.createElement('button');b.id='type-'+t.id;b.innerHTML=`<i style="background:hsl(${t.wax[0]} ${t.wax[1]}% ${t.wax[2]}%)"></i>${t.name}`;
+  b.setAttribute('aria-pressed',t===type);b.onclick=()=>{type=t;[...typesEl.children].forEach(x=>x.setAttribute('aria-pressed',x===b));build()};typesEl.appendChild(b)});
+document.getElementById('reset').onclick=()=>{build();hint.style.opacity=1};
+document.getElementById('vol').oninput=e=>{volume=+e.target.value;if(master)master.gain.value=volume};
+build();frame();
+</script>
+
+</body>
+</html>
