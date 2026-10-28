@@ -48,7 +48,7 @@ input[type=range]{width:90px;accent-color:var(--accent)}
 
 <div class="stage" id="stage">
   <canvas id="cv" aria-label="왁뿌볼. 누르거나 문질러서 왁스를 부수세요. 스페이스바로도 누를 수 있어요." tabindex="0"></canvas>
-  <div class="hint" id="hint">꾹 누르고 버티면 주변 왁스가 와르르</div>
+  <div class="hint" id="hint">잡고 당기면 쭈욱, 버티면 와르르</div>
   <div class="done" id="done" hidden>완뿌! 새 볼로 또 뿌셔보세요</div>
 </div>
 
@@ -134,7 +134,13 @@ function tick(g=.4){if(!ac)return;const t=ac.currentTime;grain(t,'bandpass',rnd(
 
 /* ---------- interaction ---------- */
 /* hold to build pressure: cracks spread while held, and past the limit every cracked chip nearby drops together */
-let down=false,hx=0,hy=0,pressure=0,lastT=performance.now(),crackAcc=0;
+let down=false,hx=0,hy=0,gx=0,gy=0,pressure=0,lastT=performance.now(),crackAcc=0;
+/* pull: only the grabbed spot stretches toward the pointer, fading out with distance; springs back with a wobble */
+let pullX=0,pullY=0,pvx=0,pvy=0;const SIG2=.42*.42;
+function warp(x,y){const f=Math.exp(-((x-gx)**2+(y-gy)**2)/SIG2);return[x+pullX*f,y+pullY*f]}
+function stepPull(dt){let tx=0,ty=0;
+  if(down){const dx=(hx-cx)/R-gx,dy=(hy-cy)/R-gy,L=Math.hypot(dx,dy);if(L>1e-4){const k=.55*Math.tanh(L/.55)/L;tx=dx*k;ty=dy*k}}
+  pvx+=(tx-pullX)*320*dt;pvy+=(ty-pullY)*320*dt;const damp=Math.exp(-(down?18:9)*dt);pvx*=damp;pvy*=damp;pullX+=pvx*dt;pullY+=pvy*dt;}
 function local(px,py){return[(px-cx)/R,(py-cy)/R]}
 function crackAt(x,y,rad){let nc=0;
   for(const ch of chips){if(ch.s!=0)continue;const d=Math.hypot(ch.mx-x,ch.my-y);
@@ -146,10 +152,10 @@ function collapse(x,y){let nf=0;
   if(nf){crunch(Math.max(4,nf*.6));crackle();setTimeout(crackle,60);updateCount()}
   crackAt(x,y,.6);}
 function startPress(px,py){const[x,y]=local(px,py);if(Math.hypot(x,y)>1.12)return;
-  down=true;hx=px;hy=py;pressure=0;crackAcc=0;const nc=crackAt(x,y,.2);if(nc)crunch(nc);hint.style.opacity=0;}
-function holdTick(dt){if(!down){squashT=0;return}
-  pressure=Math.min(1,pressure+dt/.7);squashT=.35+.65*pressure;
-  const[x,y]=local(hx,hy);crackAcc+=dt;
+  down=true;hx=px;hy=py;gx=x;gy=y;pressure=0;crackAcc=0;const nc=crackAt(x,y,.2);if(nc)crunch(nc);hint.style.opacity=0;}
+function holdTick(dt){stepPull(dt);if(!down)return;
+  pressure=Math.min(1,pressure+dt/.7);
+  const x=gx,y=gy;crackAcc+=dt;
   if(crackAcc>.09){crackAcc=0;const nc=crackAt(x,y,.2+.22*pressure);if(nc)crunch(nc);}
   if(pressure>=1){collapse(x,y);pressure=0;}}
 function spawn(ch,x,y,d){if(parts.length>260)parts.shift();
@@ -164,6 +170,7 @@ cv.addEventListener('keyup',e=>{if(e.code==='Space'||e.code==='Enter')down=false
 function pt(e){const b=cv.getBoundingClientRect();return[e.clientX-b.left,e.clientY-b.top]}
 
 /* ---------- render ---------- */
+function polyW(pts,ox,oy,ys){c.beginPath();pts.forEach((q,i)=>{const[wx,wy]=warp(q[0]+ox,q[1]+oy);const X=cx+wx*R,Y=cy+wy*R+ys;i?c.lineTo(X,Y):c.moveTo(X,Y)});c.closePath()}
 function poly(pts,ox,oy,s){c.beginPath();pts.forEach((q,i)=>{const X=ox+q[0]*s,Y=oy+q[1]*s;i?c.lineTo(X,Y):c.moveTo(X,Y)});c.closePath()}
 function frame(){
   const now=performance.now();holdTick(Math.min(.05,(now-lastT)/1000));lastT=now;
@@ -171,24 +178,25 @@ function frame(){
   c.setTransform(dpr,0,0,dpr,0,0);c.clearRect(0,0,W,H);
   // floor shadow
   const sh=c.createRadialGradient(cx,floorY,0,cx,floorY,R*1.1);sh.addColorStop(0,'rgba(40,20,50,.28)');sh.addColorStop(1,'rgba(40,20,50,0)');
-  c.save();c.translate(cx,floorY);c.scale(1+squash*.08,.16);c.translate(-cx,-floorY);c.fillStyle=sh;c.beginPath();c.arc(cx,floorY,R*1.1,0,7);c.fill();c.restore();
+  c.save();c.translate(cx,floorY);c.scale(1,.16);c.translate(-cx,-floorY);c.fillStyle=sh;c.beginPath();c.arc(cx,floorY,R*1.1,0,7);c.fill();c.restore();
   // ball with squash around its base
-  c.save();c.translate(cx,floorY);c.scale(1+squash*.07,1-squash*.09);c.translate(-cx,-floorY);
-  c.beginPath();c.arc(cx,cy,R,0,7);c.save();c.clip();
-  c.fillStyle=type.inner;c.fillRect(cx-R,cy-R,2*R,2*R);
-  for(const s of spots){const g=c.createRadialGradient(cx+s[0]*R,cy+s[1]*R,0,cx+s[0]*R,cy+s[1]*R,s[2]*R);g.addColorStop(0,type.innerSpot);g.addColorStop(1,'transparent');c.fillStyle=g;c.fillRect(cx-R,cy-R,2*R,2*R)}
+  c.save();
+  c.beginPath();for(let i=0;i<=120;i++){const a=i/120*Math.PI*2,[wx,wy]=warp(Math.cos(a),Math.sin(a));i?c.lineTo(cx+wx*R,cy+wy*R):c.moveTo(cx+wx*R,cy+wy*R)}c.closePath();c.save();c.clip();
+  c.fillStyle=type.inner;c.fillRect(cx-2*R,cy-2*R,4*R,4*R);
+  for(const s of spots){const[wx,wy]=warp(s[0],s[1]),X=cx+wx*R,Y=cy+wy*R;const g=c.createRadialGradient(X,Y,0,X,Y,s[2]*R);g.addColorStop(0,type.innerSpot);g.addColorStop(1,'transparent');c.fillStyle=g;c.fillRect(cx-2*R,cy-2*R,4*R,4*R)}
   // shell chips: underside edge first so exposed rims read as thickness
-  for(const ch of chips){if(ch.s==2)continue;poly(ch.p,cx+ch.ox*R,cy+ch.oy*R+1.5,R);c.fillStyle=waxCol(ch,-14);c.fill()}
-  for(const ch of chips){if(ch.s==2)continue;const ox=cx+ch.ox*R,oy=cy+ch.oy*R;poly(ch.p,ox,oy,R);c.fillStyle=waxCol(ch);c.fill();
-    if(ch.gl.length){for(const g of ch.gl){c.fillStyle=`rgba(255,255,255,${.5+.5*Math.sin(performance.now()/300*g[2]+g[0]*20)})`;c.fillRect(ox+g[0]*R,oy+g[1]*R,1.6,1.6)}}
+  for(const ch of chips){if(ch.s==2)continue;polyW(ch.p,ch.ox,ch.oy,1.5);c.fillStyle=waxCol(ch,-14);c.fill()}
+  for(const ch of chips){if(ch.s==2)continue;polyW(ch.p,ch.ox,ch.oy,0);c.fillStyle=waxCol(ch);c.fill();
+    if(ch.gl.length){for(const g of ch.gl){const[wx,wy]=warp(g[0]+ch.ox,g[1]+ch.oy);c.fillStyle=`rgba(255,255,255,${.5+.5*Math.sin(performance.now()/300*g[2]+g[0]*20)})`;c.fillRect(cx+wx*R,cy+wy*R,1.6,1.6)}}
     if(ch.s==1){c.strokeStyle='rgba(30,10,30,.35)';c.lineWidth=1.1;c.stroke();
-      c.beginPath();c.moveTo(ox+ch.crack[0][0]*R,oy+ch.crack[0][1]*R);c.lineTo(ox+ch.crack[1][0]*R,oy+ch.crack[1][1]*R);c.stroke();
-      c.strokeStyle='rgba(255,255,255,.35)';c.lineWidth=.7;poly(ch.p,ox+.8,oy+.8,R);c.stroke()}}
+      const[a1,b1]=warp(ch.crack[0][0]+ch.ox,ch.crack[0][1]+ch.oy),[a2,b2]=warp(ch.crack[1][0]+ch.ox,ch.crack[1][1]+ch.oy);
+      c.beginPath();c.moveTo(cx+a1*R,cy+b1*R);c.lineTo(cx+a2*R,cy+b2*R);c.stroke();
+      c.strokeStyle='rgba(255,255,255,.35)';c.lineWidth=.7;polyW(ch.p,ch.ox+.8/R,ch.oy+.8/R,0);c.stroke()}}
   // lighting
-  let g=c.createRadialGradient(cx-R*.38,cy-R*.42,0,cx-R*.38,cy-R*.42,R*.75);g.addColorStop(0,'rgba(255,255,255,.55)');g.addColorStop(1,'rgba(255,255,255,0)');c.fillStyle=g;c.fillRect(cx-R,cy-R,2*R,2*R);
-  g=c.createRadialGradient(cx,cy,R*.55,cx,cy,R);g.addColorStop(0,'rgba(20,0,30,0)');g.addColorStop(1,'rgba(20,0,30,.3)');c.fillStyle=g;c.fillRect(cx-R,cy-R,2*R,2*R);
+  let g=c.createRadialGradient(cx-R*.38,cy-R*.42,0,cx-R*.38,cy-R*.42,R*.75);g.addColorStop(0,'rgba(255,255,255,.55)');g.addColorStop(1,'rgba(255,255,255,0)');c.fillStyle=g;c.fillRect(cx-2*R,cy-2*R,4*R,4*R);
+  g=c.createRadialGradient(cx,cy,R*.55,cx,cy,R*1.05);g.addColorStop(0,'rgba(20,0,30,0)');g.addColorStop(1,'rgba(20,0,30,.3)');c.fillStyle=g;c.fillRect(cx-2*R,cy-2*R,4*R,4*R);
   c.restore();c.restore();
-  if(down&&pressure>.05){c.strokeStyle=`rgba(255,255,255,${.25+.45*pressure})`;c.lineWidth=2;c.beginPath();c.arc(hx,hy,R*(.5-.38*pressure),0,7);c.stroke()}
+  if(down&&pressure>.05){c.strokeStyle=`rgba(255,255,255,${.25+.45*pressure})`;c.lineWidth=2;c.beginPath();c.arc(cx+warp(gx,gy)[0]*R,cy+warp(gx,gy)[1]*R,R*(.5-.38*pressure),0,7);c.stroke()}
   // falling chips
   for(let i=parts.length-1;i>=0;i--){const p=parts[i];p.vy+=.35;p.x+=p.vx;p.y+=p.vy;p.r+=p.vr;
     if(p.y>floorY+rnd(-4,10)&&p.vy>0){p.y=floorY+4;if(p.bounced<2&&p.vy>1.2){if(p.bounced==0)tick(Math.min(.5,p.vy*.08));p.vy*=-.3;p.vx*=.6;p.vr*=.5;p.bounced++}else{p.vy=0;p.vx*=.8;p.vr=0;p.life-=.004}}
